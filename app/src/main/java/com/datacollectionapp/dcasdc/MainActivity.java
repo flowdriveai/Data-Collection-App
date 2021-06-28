@@ -3,6 +3,7 @@ package com.datacollectionapp.dcasdc;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.ContentValues;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.net.Uri;
@@ -212,6 +213,8 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
             }
             else{
                 Toast.makeText(this, "Permission Granted", Toast.LENGTH_SHORT).show();
+                startActivity(new Intent(this,MainActivity.class));
+                finish();
             }
         }
     }
