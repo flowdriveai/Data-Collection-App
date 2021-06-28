@@ -88,7 +88,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
                 saved.clear();
                 seconds = 0;
                 minutes = 0;
-                tv.setText(minutes +":"+seconds);
+                tv.setText("");
                 counter.setText("Frames");
                 captureStatus = false;
                 capture.setText("CAPTURE");
@@ -228,7 +228,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         captureStatus=false;
         seconds = 0;
         minutes = 0;
-        tv.setText(minutes +":"+seconds);
+        tv.setText("");
         counter.setText("Frames");
         capture.setText("CAPTURE");
         capture.setBackgroundColor(getResources().getColor(R.color.green));
@@ -243,7 +243,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         captureStatus=false;
         seconds = 0;
         minutes = 0;
-        tv.setText(minutes +":"+seconds);
+        tv.setText("");
         counter.setText("Frames");
         capture.setText("CAPTURE");
         capture.setBackgroundColor(getResources().getColor(R.color.green));
