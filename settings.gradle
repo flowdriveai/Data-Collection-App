@@ -1,0 +1,3 @@
+rootProject.name = "DCA-SDC"
+include ':app'
+include ':openCVLibrary3413'
