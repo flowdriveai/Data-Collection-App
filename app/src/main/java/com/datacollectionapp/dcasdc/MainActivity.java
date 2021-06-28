@@ -155,10 +155,10 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         Bitmap bmp = Bitmap.createBitmap(tmp.cols(), tmp.rows(), Bitmap.Config.ARGB_8888);
         Utils.matToBitmap(tmp, bmp);
 
-        @SuppressLint("SimpleDateFormat") String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+        @SuppressLint("SimpleDateFormat") String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmssSSSS").format(new Date());
         String fileName = timeStamp+".jpg";
         try {
-            if(captureStatus && !saved.contains(fileName))
+            if(captureStatus)
             {
                 saveImageToStorage(bmp,fileName);
             }
