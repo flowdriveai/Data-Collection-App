@@ -27,7 +27,6 @@ import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
-import androidx.core.content.FileProvider;
 
 import org.opencv.android.BaseLoaderCallback;
 import org.opencv.android.CameraBridgeViewBase;
@@ -44,10 +43,6 @@ import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -70,8 +65,11 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     public int minutes = 0;
     Timer t;
     private SensorManager sensorManager;
-    private Sensor sensor;
-    private SensorEvent event;
+    private final float[] accelerometerReading = new float[3];
+    private final float[] magnetometerReading = new float[3];
+
+    private final float[] rotationMatrix = new float[9];
+    private final float[] orientationAngles = new float[3];
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -80,9 +78,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         setContentView(R.layout.activity_main);
         getWindow(). addFlags (WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
-        sensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-        sensorManager.registerListener(MainActivity.this,sensor,
-                sensorManager.SENSOR_DELAY_NORMAL);
         capture = findViewById(R.id.btn);
         capture.setOnClickListener(MainActivity.this);
         counter = findViewById(R.id.cnt);
@@ -93,11 +88,41 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_CAMERA_PERMISSION);
         }
+
+        if(SharedPrefManager.getInstance(getApplicationContext()).getKeyInit()){
+            writeInfo();
+        }
+
         tv = findViewById(R.id.timer);
         t = new Timer();
     }
 
-
+    private void writeInfo(){
+        final String info = "Data is in the following order-> " +
+                "\n\n" +
+                "Azimuth (degrees of rotation about the -z axis). This is the angle between the device's current compass direction and magnetic north. If the top edge of the device faces magnetic north, the azimuth is 0 degrees; if the top edge faces south, the azimuth is 180 degrees. Similarly, if the top edge faces east, the azimuth is 90 degrees, and if the top edge faces west, the azimuth is 270 degrees." +
+                "\n\n" +
+                "Pitch (degrees of rotation about the x axis). This is the angle between a plane parallel to the device's screen and a plane parallel to the ground. If you hold the device parallel to the ground with the bottom edge closest to you and tilt the top edge of the device toward the ground, the pitch angle becomes positive. Tilting in the opposite direction— moving the top edge of the device away from the ground—causes the pitch angle to become negative. The range of values is -180 degrees to 180 degrees" +
+                "\n\n" +
+                "Roll (degrees of rotation about the y axis). This is the angle between a plane perpendicular to the device's screen and a plane perpendicular to the ground. If you hold the device parallel to the ground with the bottom edge closest to you and tilt the left edge of the device toward the ground, the roll angle becomes positive. Tilting in the opposite direction—moving the right edge of the device toward the ground— causes the roll angle to become negative. The range of values is -90 degrees to 90 degrees." +
+                "\n\n\n" +
+                "Note that these angles work off of a different coordinate system than the one used in aviation (for yaw, pitch, and roll). In the aviation system, the x axis is along the long side of the plane, from tail to nose.";
+        try {
+            File root = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "DCA-SDC/Instruction/");
+            if (!root.exists()) {
+                root.mkdirs();
+            }
+            File file = new File(root, "info.txt");
+            FileWriter writer = new FileWriter(file);
+            writer.append(info);
+            writer.flush();
+            writer.close();
+            Log.e(TAG,"Details Saved");
+            SharedPrefManager.getInstance(getApplicationContext()).setKeyInit(false);
+        } catch (IOException e) {
+            Log.e(TAG,e.getMessage());
+        }
+    }
 
     @SuppressLint({"SetTextI18n", "SimpleDateFormat"})
     @Override
@@ -175,9 +200,10 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
         @SuppressLint("SimpleDateFormat") String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmssSSSS").format(new Date());
         try {
-            if(captureStatus && event!=null)
+            updateOrientationAngles();
+            if(captureStatus && orientationAngles!=null)
             {
-                String s = ""+event.values[0]+" "+event.values[1]+" "+event.values[2]+" ";
+                String s = ""+orientationAngles[0]+" "+orientationAngles[1]+" "+orientationAngles[2]+" ";
                 Bitmap bmp = Bitmap.createBitmap(mRGBA.cols(), mRGBA.rows(), Bitmap.Config.ARGB_8888);
                 Utils.matToBitmap(mRGBA, bmp);
                 saveImageToStorage(bmp, timeStamp, s);
@@ -267,12 +293,23 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         capture.setBackgroundColor(getResources().getColor(R.color.green));
         counter.setText("Frames");
         super.onPause();
+        sensorManager.unregisterListener(this);
     }
 
     @SuppressLint("SetTextI18n")
     @Override
     protected void onResume() {
         super.onResume();
+        Sensor accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        if (accelerometer != null) {
+            sensorManager.registerListener(this, accelerometer,
+                    SensorManager.SENSOR_DELAY_NORMAL, SensorManager.SENSOR_DELAY_UI);
+        }
+        Sensor magneticField = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
+        if (magneticField != null) {
+            sensorManager.registerListener(this, magneticField,
+                    SensorManager.SENSOR_DELAY_NORMAL, SensorManager.SENSOR_DELAY_UI);
+        }
         captureStatus=false;
         seconds = 0;
         minutes = 0;
@@ -295,11 +332,28 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     @Override
     public void onSensorChanged(SensorEvent event) {
-        this.event=event;
+        if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+            System.arraycopy(event.values, 0, accelerometerReading,
+                    0, accelerometerReading.length);
+        } else if (event.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD) {
+            System.arraycopy(event.values, 0, magnetometerReading,
+                    0, magnetometerReading.length);
+        }
     }
 
     @Override
     public void onAccuracyChanged(Sensor sensor, int accuracy) {
 
+    }
+    public void updateOrientationAngles() {
+        // Update rotation matrix, which is needed to update orientation angles.
+        SensorManager.getRotationMatrix(rotationMatrix, null,
+                accelerometerReading, magnetometerReading);
+
+        // "rotationMatrix" now has up-to-date information.
+
+        SensorManager.getOrientation(rotationMatrix, orientationAngles);
+
+        // "orientationAngles" now has up-to-date information.
     }
 }
