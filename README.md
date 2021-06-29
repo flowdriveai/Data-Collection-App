@@ -4,3 +4,5 @@
 
 ### Clone the repository and Build using Android Studio SDK
 ### OpenCV for Android 3.4.13 SDK used in the project
+
+## [Download The App Here](https://autonomous-car-project.github.io/Data-Collection-App/)
