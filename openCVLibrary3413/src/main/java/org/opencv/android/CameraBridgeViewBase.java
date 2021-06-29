@@ -1,5 +1,6 @@
 package org.opencv.android;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -420,10 +421,9 @@ public abstract class CameraBridgeViewBase extends SurfaceView implements Surfac
 
         if (bmpValid && mCacheBitmap != null) {
             Canvas canvas = getHolder().lockCanvas();
-            canvas.rotate(270f, canvas.getWidth()/2, canvas.getHeight()/2);
             if (canvas != null) {
-                Bitmap bitmap = Bitmap.createScaledBitmap(mCacheBitmap, canvas.getHeight(), canvas.getWidth(), true);
-
+                canvas.rotate(270f, canvas.getWidth()/2, canvas.getHeight()/2);
+                Bitmap bitmap = Bitmap.createScaledBitmap(mCacheBitmap, canvas.getHeight(), canvas.getWidth(), false);
                 canvas.drawColor(0, android.graphics.PorterDuff.Mode.CLEAR);
                 if (BuildConfig.DEBUG)
                     Log.i(TAG, "mStretch value: " + mScale);

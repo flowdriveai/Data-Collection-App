@@ -3,9 +3,14 @@ package com.datacollectionapp.dcasdc;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.ContentValues;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -19,8 +24,10 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import androidx.core.content.FileProvider;
 
 import org.opencv.android.BaseLoaderCallback;
 import org.opencv.android.CameraBridgeViewBase;
@@ -34,8 +41,13 @@ import org.opencv.imgproc.Imgproc;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -44,7 +56,7 @@ import java.util.Objects;
 import java.util.Timer;
 import java.util.TimerTask;
 
-public class MainActivity extends AppCompatActivity implements CameraBridgeViewBase.CvCameraViewListener2, View.OnClickListener {
+public class MainActivity extends AppCompatActivity implements SensorEventListener,CameraBridgeViewBase.CvCameraViewListener2, View.OnClickListener {
 
     private static final String TAG= "Main Activity";
     private static final int REQUEST_CAMERA_PERMISSION= 100;
@@ -57,6 +69,9 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     public int seconds = 0;
     public int minutes = 0;
     Timer t;
+    private SensorManager sensorManager;
+    private Sensor sensor;
+    private SensorEvent event;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -64,6 +79,10 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         Objects.requireNonNull(getSupportActionBar()).hide();
         setContentView(R.layout.activity_main);
         getWindow(). addFlags (WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+        sensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        sensorManager.registerListener(MainActivity.this,sensor,
+                sensorManager.SENSOR_DELAY_NORMAL);
         capture = findViewById(R.id.btn);
         capture.setOnClickListener(MainActivity.this);
         counter = findViewById(R.id.cnt);
@@ -146,56 +165,68 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         mRGBA.release();
     }
 
+    @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     public Mat onCameraFrame(CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
         mRGBA = inputFrame.rgba();
         mRGBAT = mRGBA.t();
         Core.flip(mRGBA.t(),mRGBAT,1);
         Imgproc.resize(mRGBAT,mRGBAT,mRGBA.size());
-        Mat tmp = mRGBA;
-        Bitmap bmp = Bitmap.createBitmap(tmp.cols(), tmp.rows(), Bitmap.Config.ARGB_8888);
-        Utils.matToBitmap(tmp, bmp);
 
         @SuppressLint("SimpleDateFormat") String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmssSSSS").format(new Date());
-        String fileName = timeStamp+".jpg";
         try {
-            if(captureStatus)
+            if(captureStatus && event!=null)
             {
-                saveImageToStorage(bmp,fileName);
+                String s = ""+event.values[0]+" "+event.values[1]+" "+event.values[2]+" ";
+                Bitmap bmp = Bitmap.createBitmap(mRGBA.cols(), mRGBA.rows(), Bitmap.Config.ARGB_8888);
+                Utils.matToBitmap(mRGBA, bmp);
+                saveImageToStorage(bmp, timeStamp, s);
             }
         }catch (IOException e){
             Log.e(TAG,e.getMessage());
         }
+        mRGBA.release();
         return mRGBAT;
     }
 
-    private void saveImageToStorage(Bitmap bitmap,String fileName) throws IOException {
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    private void saveImageToStorage(Bitmap bitmap, String fileName, String d) throws IOException {
         OutputStream imageOutStream;
-        saved.add(fileName);
+        saved.add(fileName+".jpg");
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
 
             ContentValues values = new ContentValues();
-            values.put(MediaStore.Images.Media.DISPLAY_NAME,
-                    fileName);
+            values.put(MediaStore.Images.Media.DISPLAY_NAME, fileName+".jpg");
             values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
             values.put(MediaStore.Images.Media.RELATIVE_PATH,
                     Environment.DIRECTORY_PICTURES + "/DCA-SDC/"+folderName+"/img/");
 
-            Uri uri =
-                    getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                            values);
+            Uri uri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,values);
 
             imageOutStream = getContentResolver().openOutputStream(uri);
-
         } else {
 
             String imagesDir =
                     Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES). toString() + "/DCA-SDC/"+folderName+"/img/";
-            File image = new File(imagesDir, fileName);
+            File image = new File(imagesDir, fileName+".jpg");
             imageOutStream = new FileOutputStream(image);
         }
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 100, imageOutStream);
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 80, imageOutStream);
         imageOutStream.close();
+
+        try {
+            File root = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "DCA-SDC/"+folderName+"/data/");
+            if (!root.exists()) {
+                root.mkdirs();
+            }
+            File file = new File(root, fileName+".txt");
+            FileWriter writer = new FileWriter(file);
+            writer.append(d);
+            writer.flush();
+            writer.close();
+        } catch (IOException e) {
+            Log.e(TAG,e.getMessage());
+        }
     }
 
     @Override
@@ -209,13 +240,12 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
             if (grantResults[0] == PackageManager.PERMISSION_DENIED) {
                 // close the app
                 Toast.makeText(MainActivity.this, "Sorry!!!, you can't use this app without granting permission", Toast.LENGTH_LONG).show();
-                finish();
             }
             else{
                 Toast.makeText(this, "Permission Granted", Toast.LENGTH_SHORT).show();
                 startActivity(new Intent(this,MainActivity.class));
-                finish();
             }
+            finish();
         }
     }
 
@@ -261,5 +291,15 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
             OpenCVLoader.initAsync(OpenCVLoader.OPENCV_VERSION,this,
                     baseLoaderCallback);
         }
+    }
+
+    @Override
+    public void onSensorChanged(SensorEvent event) {
+        this.event=event;
+    }
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {
+
     }
 }
